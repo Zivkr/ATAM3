@@ -1,0 +1,137 @@
+				
+; use this ^^ as a for a loop, read the data each time, place it in memory, place memory address in r5, run movePiece
+; if you reach the final square return 1, if you reach end of input first return 0
+
+main:			mov pc, sp	; find a way to place the parameters corectly!
+				tst -(sp)
+				mov #5002, r5
+				mov (r5)+, -(sp) ; the row, 4(sp)
+				mov (r5)+, -(sp) ; the column, 2(sp)
+				mov (r5)+, -(sp) ; the direction, (sp)
+				cmp 2(sp), #0	; if the column is negative
+				blt endMovePiece
+				cmp 4(sp), #0	; if the row is negative
+				blt endMovePiece
+				cmp 2(sp), nCols	; if the column is too big
+				bge endMovePiece
+				cmp 4(sp), nRows	; if the row is too big
+				bge endMovePiece
+				mov #board, -(sp) ; (sp) is board, 2(sp) is the direction, 4(sp) is the column, 6(sp) is the row
+				mov r0, -(sp)
+				mov r1, -(sp) 
+				; (sp) is the content of r1; 2(sp) is the content of r0; 
+				; 4(sp) is board, 6(sp) is the direction
+				; 10(sp) is the column, 12(sp) is the row
+				; 14(sp) will be the return address <<< ?????
+				mov 12(sp), r0 ; r0 is the row index
+				mul nCols, r0 ; multiply row index by row width
+				add 10(sp), r1 ; r1 now contains the index in board we need to move initially
+				add r1, 4(sp) ; the address of board has been moved up to the index, all in 4(sp)
+				; call the apropriate function
+				cmp 6(sp), #'U
+				beq callUp
+				cmp 6(sp), #'D
+				beq callDown
+				cmp 6(sp), #'L
+				beq callLeft
+				cmp 6(sp), #'R
+				beq callRight
+endMovePiece:	mov (sp)+, r1	; release r1
+				mov (sp)+, r0	; release r0
+				tst (sp)+		; release the board
+				tst (sp)+ 		; release the direction
+				movb (sp), 3(sp); release the column and put it in the lsb for the next cell
+				tst (sp)+ 		; release  the row 
+				; (sp) will be row, 1(sp) will be column
+				; mov (sp)+, (sp) ; might ruin something important for something that has to do with main
+				halt	
+
+				
+				
+callUp:		jsr pc, upMove
+			jmp endMovePiece
+				
+callDown:	jsr pc, downMove
+			jmp endMovePiece
+
+callLeft:	jsr pc, leftMove
+			jmp endMovePiece
+
+callRight:	jsr pc, rightMove
+			jmp endMovePiece		
+
+
+
+; keep moving up in board until you hit a block that stops you, keep updating the last coordinates(?) or (-1,1) if illegal
+; should get input from the spm, the first being the column, the second being the row (?)
+	upMove:	dec 14(sp)			; decrease the row
+			sub nCols, 6(sp)		; move in the board
+			cmpb @6(sp), #0		; if colided with an object
+			bne endUp
+			cmp 14(sp), 0  		; if not out of bounds
+			bgt	upMove
+			mov #-1, 12(sp) 	; if illegal coordinates were reached, turns coordinates to (-1,-1)
+			mov #-2, 14(sp)
+	endUp:	inc 14(sp)			; increases the row to indicate ending index
+			rts pc
+
+
+
+; keep moving down in board until you hit a block that stops you, keep updating the last coordinates(?) or (-1,1) if illegal
+downMove:	inc 14(sp)			; increase the row
+			add nCols, 6(sp)		; move in the board
+			cmpb @6(sp), #0		; if colided with an object
+			bne endDown
+			cmpb 14(sp), nRows 	; if not out of bounds
+			blt	downMove
+			mov #-1, 12(sp) 	; if illegal coordinates were reached, turns coordinates to (-1,-1)
+			mov #0, 14(sp)
+endDown:		dec 14(sp)			; decreases the row to indicate ending index
+			rts pc
+
+
+; keep moving left in board until you hit a block that stops you, keep updating the last coordinates(?) or (-1,1) if illegal
+leftMove:	dec 12(sp)			; decrease the column
+			sub #1, 6(sp)		; move in the board
+			cmpb @6(sp), #0		; if colided with an object
+			bne endLeft
+			cmp 12(sp), 0  		; if not out of bounds
+			bgt	leftMove
+			mov #-2, 12(sp)		; if illegal coordinates were reached, turns coordinates to (-1,-1)
+			mov #-1, 14(sp)
+endLeft:		inc 12(sp)			; increases the column to indicate ending index
+			rts pc
+
+
+; keep moving right in board until you hit a block that stops you, keep updating the last coordinates(?) or (-1,1) if illegal
+rightMove:	inc 12(sp)			; increase the column 
+			add #1, 6(sp)		; move in the board
+			cmpb @6(sp), #0		; if colided with an object
+			bne endRight
+			cmpb 12(sp), nCols  ; if not out of bounds
+			blt	rightMove
+			mov #0, 12(sp) ; if illegal coordinates were reached, turns coordinates to (-1,-1)
+			mov #-1, 14(sp)
+endRight:	dec 12(sp)	; decreases the column to indicate ending index
+			rts pc
+		
+
+			
+
+board: 	.byte 0,'B, 0, 0, 0
+		.byte 'R,'R, 0, 0,'R
+		.byte 0, 0, 0, 0, 0
+		.byte 0, 0, 0, 0, 0
+		.byte 0,'A, 0,'R, 0
+		
+.even
+nRows: .byte 5
+.even
+nCols: .byte 5
+.even
+MaxLen: .byte 15
+.even 
+Finish: .byte 3, 1
+
+. = torg + 5002
+.word 4, 1, 'R
