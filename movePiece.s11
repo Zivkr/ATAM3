@@ -1,0 +1,160 @@
+; HW3
+
+. = torg + 1000
+main:			mov pc, sp	; find a way to place the parameters corectly!
+				tst -(sp)
+				mov #5002, r5
+				mov (r5)+, -(sp) ; the row, 4(sp)
+				mov (r5)+, -(sp) ; the column, 2(sp)
+				mov (r5)+, -(sp) ; the direction, (sp)
+				cmp (sp), #'U
+				beq callUp
+				cmp (sp), #'D
+				beq callDown
+				cmp (sp), #'L
+				beq callLeft
+				cmp (sp), #'R
+				beq callRight
+endMovePiece:	halt
+
+
+callUp:		jsr pc, upMove
+			jmp endMovePiece
+				
+callDown:	jsr pc, downMove
+			jmp endMovePiece
+
+callLeft:	jsr pc, leftMove
+			jmp endMovePiece
+
+callRight:	jsr pc, rightMove
+			jmp endMovePiece		
+
+
+
+; keep moving up in board until you hit a block that stops you, keep updating the last coordinates(?) or (-1,1) if illegal
+; should get input from the spm, the first being the column, the second being the row (?)
+upMove:		mov #board, -(sp) ; (sp) is board, 2(sp) is the direction, 4(sp) is the column, 6(sp) is the row
+			mov r0, -(sp)
+			mov r1, -(sp) 
+			; (sp) is the content of r1; 2(sp) is the content of r0; 
+			; 4(sp) is board, 6(sp) is the return address;
+			; 10(sp) is the direction, 12(sp) is the column, 14(sp) is the row
+			mov 14(sp), r0 ; r0 is the row index
+			mul nCols, r0 ; multiply row index by row width
+			add 12(sp), r1 ; r1 now contains the index in board we need to move initially
+			add r1, 4(sp) ; the address of board has been moved up to the index
+	oneUp:	dec 14(sp)
+			sub nCols, 4(sp)
+			cmpb @4(sp), #'B
+			beq endUp
+			cmpb @4(sp), #'R
+			beq endUp
+			cmp 14(sp), 0  ; if out of bounds
+			bgt	oneUp
+			mov #-1, 12(sp) ; if illegal coordinates were reached, turns coordinates to (-1,-1)
+			mov #-2, 14(sp)
+	endUp:	inc 14(sp)	; increases the row to indicate ending index
+			mov (sp)+, r1
+			mov (sp)+, r0
+			tst (sp)+
+			rts pc
+				
+
+				
+; keep moving down in board until you hit a block that stops you, keep updating the last coordinates(?) or (-1,1) if illegal
+downMove:	mov #board, -(sp) ; (sp) is board, 2(sp) is the direction, 4(sp) is the column, 6(sp) is the row
+			mov r0, -(sp)
+			mov r1, -(sp) 
+			; (sp) is the content of r1; 2(sp) is the content of r0; 
+			; 4(sp) is board, 6(sp) is the return address;
+			; 10(sp) is the direction, 12(sp) is the column, 14(sp) is the row
+			mov 14(sp), r0 ; r0 is the row index
+			mul nCols, r0 ; multiply row index by row width
+			add 12(sp), r1 ; r1 now contains the index in board we need to move initially
+			add r1, 4(sp) ; the address of board has been moved up to the index
+oneDown:		inc 14(sp)
+			add nCols, 4(sp)
+			cmpb @4(sp), #'B
+			beq endDown
+			cmpb @4(sp), #'R
+			beq endDown
+			cmpb 14(sp), nRows  ; if out of bounds
+			blt	oneDown
+			mov #-1, 12(sp) ; if illegal coordinates were reached, turns coordinates to (-1,-1)
+			mov #0, 14(sp)
+endDown:		dec 14(sp)	; decreases the row to indicate ending index
+			mov (sp)+, r1
+			mov (sp)+, r0
+			tst (sp)+
+			rts pc
+
+
+; keep moving left in board until you hit a block that stops you, keep updating the last coordinates(?) or (-1,1) if illegal
+leftMove:	mov #board, -(sp) ; (sp) is board, 2(sp) is the direction, 4(sp) is the column, 6(sp) is the row
+			mov r0, -(sp)
+			mov r1, -(sp) 
+			; (sp) is the content of r1; 2(sp) is the content of r0; 
+			; 4(sp) is board, 6(sp) is the return address;
+			; 10(sp) is the direction, 12(sp) is the column, 14(sp) is the row
+			mov 14(sp), r0 ; r0 is the row index
+			mul nCols, r0 ; multiply row index by row width, result will be kept in r1
+			add 12(sp), r1 ; r1 now contains the index in board we need to move initially
+			add r1, 4(sp) ; the address of board has been moved up to the index
+oneLeft:		dec 12(sp)
+			sub #1, 4(sp)
+			cmpb @4(sp), #'B
+			beq endLeft
+			cmpb @4(sp), #'R
+			beq endLeft
+			cmp 12(sp), 0  ; if out of bounds
+			bgt	oneLeft
+			mov #-2, 12(sp) ; if illegal coordinates were reached, turns coordinates to (-1,-1)
+			mov #-1, 14(sp)
+endLeft:		inc 12(sp)	; increases the column to indicate ending index
+			mov (sp)+, r1
+			mov (sp)+, r0
+			tst (sp)+
+			rts pc
+
+
+; keep moving right in board until you hit a block that stops you, keep updating the last coordinates(?) or (-1,1) if illegal
+rightMove:	mov #board, -(sp) ; (sp) is board, 2(sp) is the direction, 4(sp) is the column, 6(sp) is the row
+			mov r0, -(sp)
+			mov r1, -(sp) 
+			; (sp) is the content of r1; 2(sp) is the content of r0; 
+			; 4(sp) is board, 6(sp) is the return address;
+			; 10(sp) is the direction, 12(sp) is the column, 14(sp) is the row
+			mov 14(sp), r0 ; r0 is the row index
+			mul nCols, r0 ; multiply row index by row width
+			add 12(sp), r1 ; r1 now contains the index in board we need to move initially
+			add r1, 4(sp) ; the address of board has been moved up to the index
+oneRight:	inc 12(sp)
+			add #1, 4(sp)
+			cmpb @4(sp), #'B
+			beq endRight
+			cmpb @4(sp), #'R
+			beq endRight
+			cmpb 12(sp), nCols  ; if out of bounds
+			blt	oneRight
+			mov #0, 12(sp) ; if illegal coordinates were reached, turns coordinates to (-1,-1)
+			mov #-1, 14(sp)
+endRight:	dec 12(sp)	; decreases the column to indicate ending index
+			mov (sp)+, r1
+			mov (sp)+, r0
+			tst (sp)+
+			rts pc
+		
+
+			
+
+board: 	.byte 0,'B, 0, 0, 0
+		.byte 'R,'R, 0, 0,'R
+		.byte 0, 0, 0, 0, 0
+		.byte 0, 0, 0, 0, 0
+		.byte 0,'A, 0,'R, 0
+nRows: .byte 5
+nCols: .byte 5
+
+. = torg + 5002
+.word 4, 1, 'D
