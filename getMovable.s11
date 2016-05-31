@@ -1,0 +1,57 @@
+;HW3 - LUNAR LOCKOUT
+
+. = torg + 1000
+
+main:	mov pc, sp
+		tst -(sp)
+		mov #array+2, -(sp)
+		mov #1500, -(sp) ; Needs to be deleted when inserted into program
+		mov r3, -(sp) ; Needs to be deleted when inserted into program
+		mov #board, -(sp)
+		clr -(sp)
+		mov nCols, r4
+
+	eachRow:mov nRows, r3
+	eachCol:cmpb @2(sp), #'A
+			beq cont1
+			cmpb @2(sp), #'R
+			beq	cont1
+			inc 2(sp)
+			br nextRow
+	cont1:	cmpb @2(sp), #'A
+			bne cont2
+			mov 6(sp), tempArrLoc
+			mov #array, 6(sp) ; 6(sp) stores the result array.
+	cont2:	mov nRows, -(sp)
+			sub r4, (sp)
+			movb (sp)+,@6(sp)
+			inc 6(sp)
+			mov nCols, -(sp)
+			sub r3, (sp)
+			movb (sp)+,@6(sp)
+			cmpb @2(sp), #'A
+			bne iterate
+			mov tempArrLoc, 6(sp)
+			dec 6(sp)
+	iterate:inc 6(sp)
+			inc 2(sp) 	; Holds the address of the current cell in the array.
+			inc (sp) 	; Holds the length of the array.
+	nextRow:sob r3, eachCol		; Going through each column in a certain row.
+			sob r4, eachRow		; Going through each row in the array.
+			
+			mov (sp)+, r4
+			tst (sp)+
+			mov (sp)+, r3 ; Not deleted when inserted into program
+			tst (sp)+ ; Needs to be deleted when inserted into program - Return address
+			mov #array, (sp)
+			
+			halt
+
+board: .byte 'R,  0, 'R
+	   .byte 'A, 'B,  0
+	   .byte  0,  0, 'R
+.even
+nCols: .word 3
+nRows: .word 3
+tempArrLoc: .word 0
+array: .blkw 8.
