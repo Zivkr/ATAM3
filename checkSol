@@ -1,0 +1,12 @@
+checkSol:		mov r4, r5
+				mov #0, r0 ; r0 will be used to count the iterations
+oneMove:			jsr r5, main ; a single move of the given coordinates, advances r5
+				inc r0
+				cmpb r0, MaxLen	; I probably used MaxLen incorrectly, and it may be wrong to use it in the firstplace
+				blt oneMove ; if more moves are left, make another move
+				cmp 4(sp), Finish; compare the end location with finish
+				bne solWorks
+				mov #0, -(sp)
+				rts pc
+solWorks:		mov #1, -(sp)
+				rts pc
