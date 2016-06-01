@@ -1,0 +1,149 @@
+
+; >>>>>> NOTE: this solution does not check whether each robot has already gone through the block it happens to land on <<<<<<<<<<<<<<
+	; this needs some series testing, and assumes that checkSol, getMovable and movePiece all work
+	; (sp) should contain the address of the array of moves
+
+
+findShortest:	mov r0, -(sp)	; save the content of r0
+				mov #-3, r0		; turns r0 to zero, used for increasing the size of moves, equivelent to i
+				mov r1, -(sp)	; save the content of r1
+				mov #-3, r1		; turns r1 to zero, used for iterating over moves, equivelent to j
+				mov r2, -(sp)	; save the content of r2
+				mov #0, r2		; turns r2 to zero, used for iterating moveables, as returned by getMovable, equivelent to object
+				mov r4, -(sp)	; save the content of r4
+				mov #moves, r4		; turns r4 to address of the array moves, but will keep the length of the array of moveables, equivelent to moveables.length
+				; (sp) will be the original content of r4, 2(sp) will be to original content of r2,
+				; 4(sp) will be to original content of r1, 6(sp) will be to original content of r0,
+				; 12(sp) will be the address of moves
+incSize:			add #3, r0			; (i=0) on first run, otherwise (i+=3)
+makeMoves:		add #3, r1			; (j=0) on first run, otherwise (j+=3)
+				mov #Movables, -(sp)	; allocate memory the address for Movables for getMovable
+				jsr pc, getMovable	; r4 will contain the length of the array of moveable objects
+				tst (sp)+			; release the memory for moveables from sp
+				mov #-2, r2			; after the iterations start, this is the same as object=0
+eachObject:		add #2, r2			; object+=2, instead of object++ then dividing and multiplying again
+				mov 12(sp), -(sp)	; local variable to allow access to moves[j], moves[j+1], moves[j+2]
+				add r1, (sp)			; (sp) should now point to moves[j]
+				mov #Movables, -(sp)	; local variable to allow access to moveables[2*object], moveables[2*object+1]
+				add r2, (sp)			; (sp) should now point to moveables[2*object], 2(sp) should point to moves[j]
+				mov @(sp), @2(sp)		; moves[j] = moveables[2*object]
+				add #2, (sp)		; (sp) should now point to moveables[2*object+1]
+				add #2, 2(sp)		; 2(sp) should now point to moves[j+1]
+				mov @(sp), @2(sp)		; moves[j+1] = moveables[2*object+1]
+				add #2, 2(sp)		; 2(sp) should now point to moves[j+2]
+				mov #'U, @2(sp)		; moves[j+2]='U
+				clr -(sp)
+				jsr pc, checkSol			
+				cmp (sp)+, #1		; remove the result of checkSol, and if the solution worked
+				beq endShortest		; end the function
+				mov #'D, @2(sp)		; moves[j+2]='D
+				clr -(sp)
+				jsr pc, checkSol
+				cmp (sp)+, #1		; remove the result of checkSol, and if the solution worked
+				beq endShortest		; end the function
+				mov #'L, @2(sp)		; moves[j+2]='L
+				clr -(sp)
+				jsr pc, checkSol
+				cmp (sp)+, #1		; remove the result of checkSol, and if the solution worked
+				beq endShortest		; end the function
+				mov #'R, @2(sp)		; moves[j+2]='R
+				clr -(sp)
+				jsr pc, checkSol
+				cmp (sp)+, #1		; remove the result of checkSol, and if the solution worked
+				beq endShortest		; end the function
+				tst (sp)+			; remove first local variable
+				tst (sp)+			; remove second local variable
+				cmp r2, r4			; if(2*object < moveables.length)
+				blt eachObject		; then iterate for eachObject
+				cmp r1, r0			; if(j<i)
+				blt	makeMoves		; start creating array again
+				cmp r0, MaxLen		; if(i<maxMoves)
+				blt incSize			; create the array again with its new size
+				; In endShortest the two local variables aren't released when called with one of the four "beq"s above?
+endShortest:		tst (sp)+			; remove first local variable
+				tst (sp)+			; remove second local variable
+				mov (sp)+, r4		; release the content of r4
+				mov (sp)+, r2		; release the content of r2
+				mov (sp)+, r1		; release the content of r1
+				mov (sp)+, r0		; release the content of r0
+				
+; FUNCTION - checkSol
+checkSol:		cmpb (r4), #'@
+				bne contFunc
+				mov #Finish, -(sp)
+				cmpb 6(sp), @(sp); compare the end location with finish
+				bne notWork
+				inc (sp)
+				cmpb 7(sp), @(sp)
+				bne notWork
+				tst (sp)+
+				mov #1, @2(sp)
+				rts pc
+	notWork:	tst (sp)+
+				mov #0, @2(sp)
+				rts pc
+	contFunc:	clr -(sp)
+	oneMove:	mov #param, -(sp)
+				movb (r4), @(sp)
+				inc r4
+				inc (sp)
+				movb (r4), @(sp)
+				inc r4
+				inc (sp)
+				movb (r4), @(sp)
+				inc r4
+				tst (sp)+
+				jsr r5, movePiece ; a single move of the given coordinates, advances r5.
+				param: .byte 2, 2, 'U
+				.even
+				tstb (sp) ; if the first byte is (-1) that means the move wasn't a valid move.
+				;NOTE TO SELF: check if board is changed if the move is not right.
+				bge okResult
+				tst (sp)+ ; Frees the address of the paramaters in the stack.
+				mov #0, @2(sp)
+				br stop
+	okResult:	mov #fakeResult, -(sp)
+				jsr pc, checkSol
+				tst(sp)+
+	stop:		tst(sp)+ ; freeing the location of the character in the stack(location after movePiece)
+				rts pc
+
+; FUNCTION - getMovable
+getMovable:	mov r3, -(sp) ; Saving the old r3 in the stack
+			mov #board, -(sp)
+			clr -(sp)
+			mov nCols, r4
+
+	eachRow:mov nRows, r3
+	eachCol:cmpb @2(sp), #'A
+			beq cont1
+			cmpb @2(sp), #'R
+			beq	cont1
+			inc 2(sp)
+			br nextRow
+	cont1:	cmpb @2(sp), #'A
+			bne cont2
+			mov 10(sp), tempArrLoc
+			mov #array, 10(sp) ; 10(sp) stores the result array.
+	cont2:	mov nRows, -(sp)
+			sub r4, (sp)
+			movb (sp)+,@10(sp)
+			inc 10(sp)
+			mov nCols, -(sp)
+			sub r3, (sp)
+			movb (sp)+,@10(sp)
+			cmpb @2(sp), #'A
+			bne iterate
+			mov tempArrLoc, 10(sp)
+			dec 10(sp)
+	iterate:inc 10(sp)
+			inc 2(sp) 	; Holds the address of the current cell in the array.
+			inc (sp) 	; Holds the length of the array.
+	nextRow:sob r3, eachCol		; Going through each column in a certain row.
+			sob r4, eachRow		; Going through each row in the array.
+			
+			mov (sp)+, r4
+			tst (sp)+
+			mov (sp)+, r3 ; Not deleted when inserted into program
+			tst (sp)+ ; Needs to be deleted when inserted into program - Return address
+			mov #array, (sp)
