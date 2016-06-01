@@ -1,0 +1,71 @@
+. = torg + 1000
+
+; The funtion that calls checkSol.
+main: 	mov #1000, sp
+		mov #fakeResult, -(sp) ; Fake address of return array
+		mov #moves, r4
+		jsr pc, function
+		
+		halt
+
+movePiece:	movb (r5), -(sp)
+			inc r5
+			movb (r5), -(sp)
+			inc r5
+			movb (r5), -(sp)
+			add #2, r5
+			tst (sp)+
+			movb 2(sp), 6(sp)
+			movb (sp), 7(sp)
+			tst (sp)+
+			tst (sp)+
+			rts r5
+
+function:
+checkSol:		; Need to save r0.
+				mov #0, r0 ; r0 will be used to count the iterations
+				clr -(sp)
+oneMove:		mov #param, -(sp)
+				movb (r4), @(sp)
+				inc r4
+				inc (sp)
+				movb (r4), @(sp)
+				inc r4
+				inc (sp)
+				movb (r4), @(sp)
+				inc r4
+				tst (sp)+
+				jsr r5, movePiece ; a single move of the given coordinates, advances r5
+				param: .byte 2, 2, 'U
+				.even
+				tstb (sp) ; if the first byte is (-1) that means the move wasn't a valid move.
+				;NOTE TO SELF: check if board is changed if the move is not right
+				bge okResult
+				tst (sp)+
+				mov #0, 2(sp)
+				rts pc
+	okResult:	inc r0
+				cmpb r0, MaxLen	; I probably used MaxLen incorrectly, and it may be wrong to use it in the firstplace
+				beq movesFin ; if no more moves are left
+				br oneMove ; if more moves are left, make another move
+	movesFin:	mov #Finish, -(sp)
+				cmpb 2(sp), @(sp); compare the end location with finish
+				bne notWork
+				inc (sp)
+				cmpb 3(sp), @(sp)
+				bne notWork
+				tst (sp)+
+				tst (sp)+
+				mov #1, 2(sp)
+				halt
+				rts pc ; - ////// deleted for debugging.
+notWork:		tst (sp)+
+				tst (sp)+ ; Deletes the address of the paramaters stored in the stack.
+				mov #0, 2(sp)
+				rts pc ; - ////// deleted for debugging.
+				halt ; ////// won't be here in final version.
+
+moves: .byte 1,2,'D,3,4,'U
+MaxLen: .word 2
+Finish: .byte 3,4
+fakeResult: .word 0
