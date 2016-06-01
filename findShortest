@@ -1,0 +1,61 @@
+
+; >>>>>> NOTE: this solution does not check whether each robot has already gone through the block it happens to land on <<<<<<<<<<<<<<
+	; this needs some series testing, and assumes that checkSol, getMoveable and movePiece all work
+	; (sp) should contain the address of the array of moves
+
+
+findShortest:	mov r0, -(sp)	; save the content of r0
+				mov #-3, r0		; turns r0 to zero, used for increasing the size of moves, equivelent to i
+				mov r1, -(sp)	; save the content of r1
+				mov #-3, r1		; turns r1 to zero, used for iterating over moves, equivelent to j
+				mov r2, -(sp)	; save the content of r2
+				mov #0, r2		; turns r2 to zero, used for iterating moveables, as returned by getMoveable, equivelent to object
+				mov r4, -(sp)	; save the content of r4
+				mov #0, r4		; turns r4 to zero, but will keep the length of the array of moveables, equivelent to moveables.length
+				; (sp) will be the original content of r4, 2(sp) will be to original content of r2,
+				; 4(sp) will be to original content of r1, 6(sp) will be to original content of r0,
+				; 10(sp) will be the address of moves
+incSize:			add #3, r0			; (i=0) on first run, otherwise (i+=3)
+makeMoves:		add #3, r1			; (j=0) on first run, otherwise (j+=3)
+				mov #Movables, -(sp)	; allocate memory the address for Movables for getMoveable
+				jsr pc, getMoveable	; r4 will contain the length of the array of moveable objects
+				tst (sp)+			; release the memory for moveables from sp
+				mov #-2, r2			; after the iterations start, this is the same as object=0
+eachObject:		add #2, r2			; object+=2, instead of object++ then dividing and multiplying again
+				mov 10(sp), -(sp)	; local variable to allow access to moves[j], moves[j+1], moves[j+2]
+				add r1, sp			; (sp) should now point to moves[j]
+				mov #Movables, -(sp)	; local variable to allow access to moveables[2*object], moveables[2*object+1]
+				add r2, sp			; (sp) should now point to moveables[2*object], 2(sp) should point to moves[j]
+				mov (sp), 2(sp)		; moves[j] = moveables[2*object]
+				add #2, (sp)		; (sp) should not point to moveables[2*object+1]
+				add #2, 2(sp)		; 2(sp) should now point to moves[j+1]
+				mov (sp), 2(sp)		; moves[j+1] = moveables[2*object+1]
+				add #2, 2(sp)		; 2(sp) should now point to moves[j+2]
+				mov #'U, 2(sp)		; moves[j+2]='U
+				jsr checkSol			
+				cmp (sp)+, 1		; remove the result of checkSol, and if the solution worked
+				beq endShortest		; end the function
+				mov #'D, 2(sp)		; moves[j+2]='D
+				jsr checkSol
+				cmp (sp)+, 1		; remove the result of checkSol, and if the solution worked
+				beq endShortest		; end the function
+				mov #'L, 2(sp)		; moves[j+2]='L
+				jsr checkSol
+				cmp (sp)+, 1		; remove the result of checkSol, and if the solution worked
+				beq endShortest		; end the function
+				mov #'R, 2(sp)		; moves[j+2]='R
+				jsr checkSol
+				cmp (sp)+, 1		; remove the result of checkSol, and if the solution worked
+				beq endShortest		; end the function
+				tst (sp)+			; remove first local variable
+				tst (sp)+			; remove second local variable
+				cmp r2, r4			; if(2*object < moveables.length)
+				blt eachObject		; then iterate for eachObject
+				cmp r1, r0			; if(j<i)
+				blt	makeMoves		; start creating array again
+				cmp r0, MaxLen		; if(i<maxMoves)
+				blt incSize			; create the array again with its new size
+endShortest:		mov (sp)+, r4		; release the content of r4
+				mov (sp)+, r2		; release the content of r2
+				mov (sp)+, r1		; release the content of r1
+				mov (sp)+, r0		; release the content of r0
