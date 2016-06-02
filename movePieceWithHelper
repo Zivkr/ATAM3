@@ -1,0 +1,177 @@
+
+
+; FUNCTION - movePiece
+movePiece:		mov pc, sp	; find a way to place the parameters corectly!
+				tst -(sp)
+				mov #5002, r5
+				movb (r5)+, -(sp) ; the row, 4(sp)			; <<<<<<NOTE: originally this was mov and not movb, but I think this is more correct
+				movb (r5)+, -(sp) ; the column, 2(sp)
+				mov (r5)+, -(sp) ; the direction, (sp)
+				cmp 2(sp), #0	; if the column is negative
+				blt badInput
+				cmp 4(sp), #0	; if the row is negative
+				blt badInput
+				cmp 2(sp), nCols	; if the column is too big
+				bge badInput
+				cmp 4(sp), nRows	; if the row is too big
+				bge badInput
+				mov #board, -(sp) ; (sp) is board, 2(sp) is the direction, 4(sp) is the column, 6(sp) is the row
+				mov r0, -(sp) ; save r0 in sp
+				mov r1, -(sp) ; save r1 in sp
+				; (sp) is the content of r1; 2(sp) is the content of r0; 
+				; 4(sp) is board, 6(sp) is the direction
+				; 10(sp) is the column, 12(sp) is the row
+				mov 12(sp), r0 ; r0 is now the row index
+				mul nCols, r0 ; multiply row index by row width
+				add 10(sp), r1 ; r1 now contains the index in board we need to move initially
+				add r1, 4(sp) ; the address of board has been moved up to the index, all in 4(sp)
+				
+				cmpb @4(sp), #'B	; if the coordinates point to a block
+				beq wrongType
+				cmpb @4(sp), #0	; if the coordinates point to an empty cell
+				beq wrongType
+				
+										;	this part assumes that the array of objects, as ordered by getMovable, is kept at "array", and its length is in r4
+				mov #r4, -(sp)		; (sp) will hold the index of the moving object in array after this loop`
+				add #array, (sp)		; get to the end of the array
+				add #2, (sp)		; used to start the following loop at the beginning of the array
+getRobot:		sub #2, (sp)		; each iteration, go to the previous object in the array		
+				cmpb @0(sp), 10(sp)	; compare the first byte in the given index in array, the column, with column given to movePiece
+				bne getRobot
+				cmpb @1(sp), 10(sp)	; compare the seccond byte in the given index in array, the row, with row given to movePiece
+				bne getRobot
+				sub #array, (sp)		; (sp) will now be the index of the moving object in array, rather than its address
+				
+		
+				; (sp) is the index of the moving object in array; 2(sp) is the content of r1; 4(sp) is the content of r0; 
+				; 6(sp) is board; 10(sp) is the direction
+				; 12(sp) is the column; 14(sp) is the row
+				
+				
+				cmpb 10(sp), #'U
+				beq callUp
+				cmpb 10(sp), #'D
+				beq callDown						; note: the checks for block and empty cells need to clean the sp better than badInput
+				cmpb 10(sp), #'L
+				beq callLeft
+				cmpb 10(sp), #'R
+				beq callRight
+				
+				
+checkRobot:		cmp #0, (sp)					; if the object moved is the astronaut, don't waste time with helper
+				beq endMovePiece
+				
+				
+				mov #helper, -(sp)				; this entire block is dedicated to preventing robots from landing on the same tile
+				add 10(sp), (sp)
+				sub #board, (sp)		; (sp) should now point to the tile in helper which represents which robots have already passed there 
+				; (sp) is the address of the tile in helper; 2(sp) is the index of the moving object in array; 
+				; 4(sp) is the content of r1; 6(sp) is the content of r0; 
+				; 10(sp) is board; 12(sp) is the direction
+				; 14(sp) is the column; 20(sp) is the row
+				mov #1, -(sp)	; this mask will be used to indicate the bit we need to check in the tile in helper to assure the robot hasn't been in it
+pushLeft:		dec 4(sp)		; move the bit in index 0 to index 4(sp)
+				asl (sp)		; move the bit left once
+				cmp #0, 4(sp)	; if the index left to move is 0, then just stop moving and get to comparing
+				bne pushLeft
+				bit 2(sp), (sp)	; once the bit has been pushed far enough, check if the tile the robot landed on has a 1 in the corresponding bit
+				bne alreadyVisited
+				; the robot can legally move to the given tile in board!
+				tst (sp)+		; free the mask
+				tst (sp)+		; free the address in helper array
+				
+				
+endMovePiece:	tst (sp)+		; release the index of the moving object
+				mov (sp)+, r1	; release r1
+				mov (sp)+, r0	; release r0
+				tst (sp)+		; release the board
+				tst (sp)+ 		; release the direction
+				movb (sp), 3(sp); release the column and put it in the lsb for the next cell
+				tst (sp)+ 		; release  the row 
+				; (sp) will be row, 1(sp) will be column
+				; mov (sp)+, (sp) ; might ruin something important for something that has to do with main
+				rts r5
+alreadyVisited:	tst (sp)+		; release the mask				<<<<<< NOTE: check these releases
+				tst (sp)+		; release the tile address in helper
+				tst (sp)+		; release the index of the moving object in array
+wrongType:		tst (sp)+		; release the content r1
+				tst (sp)+		;
+				tst (sp)+
+badInput:		mov #-1, 4(sp)	; places -1 in the return value in sp
+				tst (sp)+
+				tst (sp)+
+				rts r5
+
+				
+				
+callUp:		jsr pc, upMove
+			jmp checkRobot
+				
+callDown:	jsr pc, downMove
+			jmp checkRobot
+
+callLeft:	jsr pc, leftMove
+			jmp checkRobot
+
+callRight:	jsr pc, rightMove
+			jmp checkRobot		
+
+
+
+; keep moving up in board until you hit a block that stops you, keep updating the last coordinates(?) or (-1,1) if illegal
+; should get input from the spm, the first being the column, the second being the row (?)
+upMove:		dec 14(sp)			; decrease the row
+			sub nCols, 6(sp)		; move in the board
+			cmp 14(sp), 0  		; if out of bounds
+			blt	badUp
+			cmpb @6(sp), #0		; if colided with an object
+			bne endUp
+			br upMove
+badUp:		mov #-1, 12(sp) 	; if illegal coordinates were reached, turns coordinates to (-1,-1)
+			mov #-2, 14(sp)
+endUp:		inc 14(sp)			; increases the row to indicate ending index
+			rts pc
+
+
+
+; keep moving down in board until you hit a block that stops you, keep updating the last coordinates(?) or (-1,1) if illegal
+downMove:	inc 14(sp)			; increase the row
+			add nCols, 6(sp)		; move in the board
+			cmpb 14(sp), nRows 	; if out of bounds
+			bge	badDown
+			cmpb @6(sp), #0		; if colided with an object
+			bne endDown
+			br downMove
+badDown:		mov #-1, 12(sp) 	; if illegal coordinates were reached, turns coordinates to (-1,-1)
+			mov #0, 14(sp)
+endDown:		dec 14(sp)			; decreases the row to indicate ending index
+			rts pc
+
+
+; keep moving left in board until you hit a block that stops you, keep updating the last coordinates(?) or (-1,1) if illegal
+leftMove:	dec 12(sp)			; decrease the column
+			sub #1, 6(sp)		; move in the board
+			cmp 12(sp), 0  		; if out of bounds
+			blt	badLeft
+			cmpb @6(sp), #0		; if colided with an object
+			bne endLeft
+			br leftMove
+badLeft:		mov #-2, 12(sp)		; if illegal coordinates were reached, turns coordinates to (-1,-1)
+			mov #-1, 14(sp)
+endLeft:		inc 12(sp)			; increases the column to indicate ending index
+			rts pc
+
+
+; keep moving right in board until you hit a block that stops you, keep updating the last coordinates(?) or (-1,1) if illegal
+rightMove:	inc 12(sp)			; increase the column 
+			add #1, 6(sp)		; move in the board
+			cmpb 12(sp), nCols  ; if out of bounds
+			bge	badRight
+			cmpb @6(sp), #0		; if colided with an object
+			bne endRight
+			br rightMove
+badRight:	mov #0, 12(sp) ; if illegal coordinates were reached, turns coordinates to (-1,-1)
+			mov #-1, 14(sp)
+endRight:	dec 12(sp)	; decreases the column to indicate ending index
+			rts pc
+		
