@@ -2,11 +2,11 @@
 
 . = torg + 1000
 
-main:	mov pc, sp
-		tst -(sp)
-		mov #array+2, -(sp)
+main:	mov pc, sp ; Needs to be deleted when inserted into program
+		tst -(sp) ; Needs to be deleted when inserted into program
+		mov #array+2, -(sp) ; Needs to be written before JSR in the calling function.
 		mov #1500, -(sp) ; Needs to be deleted when inserted into program
-		mov r3, -(sp) ; Needs to be deleted when inserted into program
+		mov r3, -(sp) ; Saving the old r3 in the stack
 		mov #board, -(sp)
 		clr -(sp)
 		mov nCols, r4
@@ -20,20 +20,20 @@ main:	mov pc, sp
 			br nextRow
 	cont1:	cmpb @2(sp), #'A
 			bne cont2
-			mov 6(sp), tempArrLoc
-			mov #array, 6(sp) ; 6(sp) stores the result array.
+			mov 10(sp), tempArrLoc
+			mov #array, 10(sp) ; 10(sp) stores the result array.
 	cont2:	mov nRows, -(sp)
 			sub r4, (sp)
-			movb (sp)+,@6(sp)
-			inc 6(sp)
+			movb (sp)+,@10(sp)
+			inc 10(sp)
 			mov nCols, -(sp)
 			sub r3, (sp)
-			movb (sp)+,@6(sp)
+			movb (sp)+,@10(sp)
 			cmpb @2(sp), #'A
 			bne iterate
-			mov tempArrLoc, 6(sp)
-			dec 6(sp)
-	iterate:inc 6(sp)
+			mov tempArrLoc, 10(sp)
+			dec 10(sp)
+	iterate:inc 10(sp)
 			inc 2(sp) 	; Holds the address of the current cell in the array.
 			inc (sp) 	; Holds the length of the array.
 	nextRow:sob r3, eachCol		; Going through each column in a certain row.
@@ -54,4 +54,4 @@ board: .byte 'R,  0, 'R
 nCols: .word 3
 nRows: .word 3
 tempArrLoc: .word 0
-array: .blkw 8.
+movables: .blkw 8.
