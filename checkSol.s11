@@ -1,71 +1,438 @@
-. = torg + 1000
+. = torg + 3000
 
 ; The funtion that calls checkSol.
-main: 	mov #1000, sp
-		mov #fakeResult, -(sp) ; Fake address of return array
-		mov #moves, r4
-		jsr pc, function
+main: 	mov pc, sp ; deleted when in the big program.
+		tst -(sp) ; Initialize the stack. deleted when in the big program.
+		mov #Result, -(sp) ; Fake address of return array. deleted when in the big program.
+		mov #moves, r4 ; Address of moves is passed by register. deleted when in the big program.
+		jsr pc, checkSol
 		
+		tst (sp)+
 		halt
 
-movePiece:	movb (r5), -(sp)
-			inc r5
-			movb (r5), -(sp)
-			inc r5
-			movb (r5), -(sp)
-			add #2, r5
-			tst (sp)+
-			movb 2(sp), 6(sp)
-			movb (sp), 7(sp)
-			tst (sp)+
-			tst (sp)+
-			rts r5
+;left to set the old location in the helper array with bitClear.
 
-function:
-checkSol:		; Need to save r0.
-				mov #0, r0 ; r0 will be used to count the iterations
+movePiece:		; # get the coordinates and direction
 				clr -(sp)
-oneMove:		mov #param, -(sp)
-				movb (r4), @(sp)
-				inc r4
+				movb (r5)+, (sp) ; insert the row, 4(sp)
+				clr -(sp)
+				movb (r5)+, (sp) ; insert the column, 2(sp)
+				clr -(sp)
+				movb (r5)+, (sp) ; insert the direction, (sp)
+				
+				; # check the coordinates
+				cmp 2(sp), #0	; if the column is negative
+				blt jmpbadInput
+				cmp 4(sp), #0	; if the row is negative
+				blt jmpbadInput
+				cmp 2(sp), nCols	; if the column is too big
+				bge jmpbadInput
+				cmp 4(sp), nRows	; if the row is too big
+				bge jmpbadInput
+				jmp 4(pc)
+	jmpbadInput:jmp badInput			
+				
+				; # set 4(sp) to point to the given tile in board
+				mov #board, -(sp) ; (sp) is board, 2(sp) is the direction, 4(sp) is the column, 6(sp) is the row
+				mov r0, -(sp) ; save r0 in sp
+				mov r1, -(sp) ; save r1 in sp
+				; (sp) is the content of r1; 2(sp) is the content of r0; 
+				; 4(sp) is board, 6(sp) is the direction
+				; 10(sp) is the column, 12(sp) is the row
+				mov 12(sp), r0 ; r0 is now the row index
+				mul nCols, r0 ; multiply row index by row width
+				add 10(sp), r1 ; r1 now contains the index in board we need to move initially
+				add r1, 4(sp) ; the address of board has been moved up to the index, all in 4(sp)
+				
+				; # check if the content of the tile is correct
+				cmpb @4(sp), #'B	; if the coordinates point to a block
+				beq jmpWrongType
+				cmpb @4(sp), #0	; if the coordinates point to an empty cell
+				beq jmpWrongType
+				jmp 4(pc)
+	jmpWrongType:jmp wrongType
+				
+				; (sp) is the index of the moving object in array; 2(sp) is the content of r1; 4(sp) is the content of r0; 
+				; 6(sp) is board; 10(sp) is the direction
+				; 12(sp) is the column; 14(sp) is the row
+				; # find the index of the object being moved in the array named "movables"
+				;	this part assumes that the array of objects, as ordered by getMovable, is kept at "array", and its length is in r4
+				mov r4, -(sp)		; (sp) will hold the index of the moving object in array after this loop`
+				asl (sp)			; (sp) contains words, so it must be twice the index of each cell in the array
+				add #movables, (sp)		; get to the end of the array
+				add #2, (sp)		; used to start the following loop at the beginning of the array
+				mov #0, -(sp)		; used for comparing the second byte
+emptyFiller:		tst (sp)+			; used for comparing the second byte
+getIndex:		sub #2, (sp)		; each iteration, go to the previous object in the array		
+				cmpb @0(sp), 14(sp)	; compare the first byte in the given index in array, the column, with column given to movePiece
+				bne getIndex
+				mov @(sp), -(sp)	; used for the next comparison
+				cmpb 1(sp), 14(sp)	; compare the seccond byte in the given index in array, the row, with row given to movePiece
+				bne emptyFiller
+				tst (sp)+			; remove the byte advancement
+				sub #movables, (sp)	; (sp) will now be the index of the moving object in movables, rather than its address
+				asr (sp)			; (sp) was in bytes, but not indicates words 
+							
+				
+				; (sp) is the index of the moving object in array; 2(sp) is the content of r1; 4(sp) is the content of r0; 
+				; 6(sp) is board; 10(sp) is the direction
+				; 12(sp) is the column; 14(sp) is the row
+				
+				; # move the object in the given direction
+				cmpb 10(sp), #'U
+				beq callUp
+				cmpb 10(sp), #'D
+				beq callDown						; note: the checks for block and empty cells need to clean the sp better than badInput
+				cmpb 10(sp), #'L
+				beq callLeft
+				cmpb 10(sp), #'R
+				beq callRight
+				br badDirection
+			
+				
+				; # make sure the object didn't already visit the tile it just landed on
+checkReturns:	mov #helper, -(sp)			; >>>>>>>>>>>>>>>>>>>>>> the problem described below probably originates here somewhere
+				mov 16(sp), r0
+				mul nCols, r0
+				add 14(sp), r1			; r1 should now contain the index for which the object just moved
+				add r1, (sp)
+				; (sp) should now point to the tile in helper which represents which objects have already passed there 
+				; (sp) is the address of the tile in helper; 2(sp) is the index of the moving object in array; 
+				; 4(sp) is the content of r1; 6(sp) is the content of r0; 
+				; 10(sp) is board; 12(sp) is the direction
+				; 14(sp) is the column; 16(sp) is the row
+				mov #1, -(sp)		; this mask will be used to indicate the bit we need to check in the tile in helper to assure the object hasn't been in it
+				cmp #0, 4(sp)		; if the index of the object is 0, meaning it is the astronaut, just check if it was at the given tile
+				beq comparison
+pushLeft:		dec 4(sp)			; move the bit in index 0 to index 4(sp)
+				asl (sp)			; move the bit left once
+				cmp #0, 4(sp)		; if the index left to move is 0, then just stop moving and get to comparing, otherwise keep moving
+				bne pushLeft
+
+comparison:		bitb @2(sp), (sp)	; once the bit has been pushed far enough, check if the tile the object landed on has a 1 in the corresponding bit		
+				bne alreadyVisited	; if the bit at the given index is set, that means the object has already landed on this tile
+				
+				; # the object can legally move to the given tile in board! now mark that new square, and free the recently allocated word in sp
+				bisb (sp), @2(sp)	; sets the square the object has landed on to indicate the square has been visited by the object	
+				tst (sp)+			; free the mask
+				tst (sp)+			; free the address in helper array
+				
+				; # end the function, assuming everything went smootly and the object was indeed moved to the designated direction
+endMovePiece:	tst (sp)+		; release the index of the moving object
+				mov (sp)+, r1	; release r1
+				mov (sp)+, r0	; release r0
+				tst (sp)+		; release the board
+				tst (sp)+ 		; release the direction
+				movb (sp), 3(sp); put the column in the same word with the row
+				tst (sp)+ 		; release  the column 
+				mov (sp)+, 2(sp); release and return the new coordinates
+				; Set movables in the correct position
+				tst 2(sp)
+				blt movStop
+				mov r1, -(sp) ; r1 will be used as an iterator
+				mov #10, r1 ; The movables array is of size 8.
+				mov #param, -(sp)
+				mov #movables, -(sp)
+		nextId:	cmpb @(sp), @2(sp)
+				beq checkNext
+				add #2, (sp)
+				sob r1, nextId
+	checkNext:	inc (sp)
+				inc 2(sp)
+				cmpb @(sp), @2(sp)
+				beq setMov
+				dec 2(sp)
 				inc (sp)
-				movb (r4), @(sp)
-				inc r4
+				sob r1, nextId
+		setMov:	mov (sp), 2(sp) ; No need for the pointer to param anymore.
+				dec (sp) ; Moves the pointer to movables one back so we can set the row first.
+				mov sp, -(sp) ; A pointer to the new coordinates
+				add #10, (sp)
+				movb @(sp), @2(sp)
 				inc (sp)
-				movb (r4), @(sp)
-				inc r4
+				inc 2(sp)
+				movb @(sp), @2(sp)
+				clr (sp)+
+				clr (sp)+
+				clr (sp)+
+				mov (sp)+, r1
+				; 2(sp) will be row, 3(sp) will be column
+		movStop:inc r5
+				rts r5
+								
+				; # end the function according to which mistake happened along the way	
+				; almost the same as endMovePiece, except that it turns the return result to be (-1,-1)		
+alreadyVisited:	tst (sp)+		; release the mask
+				tst (sp)+		; release the tile address in helper
+badDirection:	tst (sp)+		; release the index of the moving object in array
+wrongType:		mov (sp)+, r1	; release r1
+				mov (sp)+, r2	; release r0
+				tst (sp)+		; release the board
+				tst (sp)+		; release the direction
+badInput:		tst (sp)+		; release the column
+				tst (sp)+		; release the row
+				mov #-1, 2(sp)	; place the return value
+				inc r5
+				rts r5
+
+				
+; # call the moving functions				
+callUp:		jsr pc, upMove
+			jmp checkReturns
+				
+callDown:	jsr pc, downMove
+			jmp checkReturns
+
+callLeft:	jsr pc, leftMove
+			jmp checkReturns
+
+callRight:	jsr pc, rightMove
+			jmp checkReturns		
+
+; (sp) is the address of the tile in helper; 2(sp) is the index of the moving object in array; 
+; 4(sp) is the content of r1; 6(sp) is the content of r0; 
+; 10(sp) is board; 12(sp) is the direction
+; 14(sp) is the column; 16(sp) is the row
+				
+upMove:		dec 16(sp)			; decrease the row
+			sub nCols, 10(sp)		; move in the board
+			cmp 16(sp), 0  		; if out of bounds
+			blt	badUp
+			cmpb @10(sp), #0	; if colided with an object
+			bne endUp
+			br upMove
+badUp:		mov #-1, 14(sp) 	; if illegal coordinates were reached, turns coordinates to (-1,-1)
+			mov #-2, 16(sp)
+endUp:		inc 16(sp)			; increases the row to indicate ending index
+			rts pc
+
+; keep moving down in board until you hit a block that stops you, keep updating the last coordinates(?) or (-1,1) if illegal
+downMove:	inc 16(sp)			; increase the row
+			add nCols, 10(sp)		; move in the board
+			cmpb 16(sp), nRows 	; if out of bounds
+			bge	badDown
+			cmpb @10(sp), #0	; if colided with an object
+			bne endDown
+			br downMove
+badDown:		mov #-1, 14(sp) 	; if illegal coordinates were reached, turns coordinates to (-1,-1)
+			mov #0, 16(sp)
+endDown:		dec 16(sp)			; decreases the row to indicate ending index
+			rts pc
+
+; keep moving left in board until you hit a block that stops you, keep updating the last coordinates(?) or (-1,1) if illegal
+leftMove:	dec 14(sp)			; decrease the column
+			sub #1, 10(sp)		; move in the board
+			cmp 14(sp), 0  		; if out of bounds
+			blt	badLeft
+			cmpb @10(sp), #0		; if colided with an object
+			bne endLeft
+			br leftMove
+badLeft:		mov #-2, 14(sp)		; if illegal coordinates were reached, turns coordinates to (-1,-1)
+			mov #-1, 16(sp)
+endLeft:		inc 14(sp)			; increases the column to indicate ending index
+			rts pc
+
+; keep moving right in board until you hit a block that stops you, keep updating the last coordinates(?) or (-1,1) if illegal
+rightMove:	inc 14(sp)			; increase the column 
+			add #1, 10(sp)		; move in the board
+			cmpb 14(sp), nCols  ; if out of bounds
+			bge	badRight
+			cmpb @10(sp), #0		; if colided with an object
+			bne endRight
+			br rightMove
+badRight:	mov #0, 14(sp) 		; if illegal coordinates were reached, turns coordinates to (-1,-1)
+			mov #-1, 16(sp)
+endRight:	dec 14(sp)			; decreases the column to indicate ending index <<<<<<<<<<<<doesn't return from this function properly
+			rts pc
+
+checkSol:		cmpb (r4), #'@
+				bne funcCont
+				mov #Finish, -(sp)
+				mov #movables, -(sp)
+				cmpb @2(sp), @(sp); compare the end location of astronaut with finish
+				bne notWork ;////// change thissssssssss
+				inc (sp)
+				inc 2(sp)
+				cmpb @2(sp), @(sp)
+				bne notWork ;////// change thissssssssss
 				tst (sp)+
-				jsr r5, movePiece ; a single move of the given coordinates, advances r5
+				tst (sp)+
+				mov #1, @2(sp) ; Putting '1' as the pointer to paramaters says the moving has worked.
+				rts pc
+	notWork:	tst (sp)+
+				tst (sp)+
+				mov #0, @2(sp)
+				rts pc
+	funcCont:
+	oneMove:	mov #param, -(sp)
+				movb (r4), @(sp)
+				inc r4
+				inc (sp)
+				movb (r4), @(sp)
+				inc r4
+				inc (sp)
+				movb (r4), @(sp)
+				inc r4
+				sub #2, (sp)
+				mov @(sp), (sp) ; now (sp) holds the old coordinates
+				mov r4, -(sp)
+				clr -(sp)
+				mov #5, r4 ; Number of objects in movables. needs to be deleted.
+				jsr r5, movePiece ; a single move of the given coordinates, advances r5.
 				param: .byte 2, 2, 'U
 				.even
+				mov 2(sp), r4
+				mov (sp)+, (sp)
 				tstb (sp) ; if the first byte is (-1) that means the move wasn't a valid move.
-				;NOTE TO SELF: check if board is changed if the move is not right
+				;NOTE TO SELF: check if board is changed if the move is not right.
 				bge okResult
-				tst (sp)+
-				mov #0, 2(sp)
+				mov #0, Result
+				;Clear the variables from the begining of the subroutine.
+				clr (sp)+
+				clr (sp)+ 
 				rts pc
-	okResult:	inc r0
-				cmpb r0, MaxLen	; I probably used MaxLen incorrectly, and it may be wrong to use it in the firstplace
-				beq movesFin ; if no more moves are left
-				br oneMove ; if more moves are left, make another move
-	movesFin:	mov #Finish, -(sp)
-				cmpb 2(sp), @(sp); compare the end location with finish
-				bne notWork
-				inc (sp)
-				cmpb 3(sp), @(sp)
-				bne notWork
+	okResult:	; Sets the old location to be empty: '0'
+				mov r0, -(sp)
+				mov r1, -(sp)
+				clr r1
+				mov #param, -(sp)
+				mov nCols, r0
+				clr -(sp)
+				movb @2(sp), (sp)
+				mul (sp), r0
+				inc 2(sp)
+				movb @2(sp), (sp)
+				add (sp), r1
+				add #board, r1
+				clr (sp)+
+				clr (sp)+
+				movb (r1), -(sp)
+				movb #0, (r1)
+				; Set the new location to be of the same character that moved.
+				; For example: 'R' if the robot moved.
+				mov sp, -(sp)
+				add #6, (sp)
+				clr -(sp)
+				movb @2(sp), (sp)
+				mov nCols, r0
+				clr r1
+				mul (sp), r0
+				inc 2(sp)
+				movb @2(sp), (sp)
+				add (sp), r1
+				add #board, r1
+				movb 4(sp),(r1)
+				clr (sp)+
+				clr (sp)+
+				clr (sp)+
+				mov (sp)+, r1
+				mov (sp)+, r0
+	
+				mov #Result, -(sp)
+				jsr pc, checkSol
+				cmp @(sp), #1 ; If it is '1' it means the move is valid.
+				bne invalid
+				tst (sp)+ ; Freeing #result.
+				jmp stop
+				; Now we deal with if the movement isn't correct.
+	invalid:	;dec (sp) ; the last character sp is pointing to is the type of movement. ex: down
+				mov r1, -(sp) ; Saves the old r1. /////////////////////////needs to release stack from here//////////////////////////////////
+				mov r0, -(sp) ; Saves the old r0.
+				mov sp, -(sp)
+				add #6, (sp) ; now (sp) holds the pointer to the new coordinates in the stack.
+				clr -(sp)
+				movb @2(sp), (sp)
+				mov nCols, r0
+				mov #0, r1
+				mul (sp), r0
+				inc 2(sp)
+				movb @2(sp), (sp)
+				add (sp), r1 ; adds the column number to the location.
+				tst (sp)+
+				dec (sp) ; now (sp) holds the pointer to the new coordinates in the stack.
+				add #board, r1
+				movb (r1), -(sp) ; Saves in the stack the character in the current cell of the array.
+				movb #0, (r1)
+				mov sp, -(sp)
+				add #14, (sp) ; The address of the coordinates last locaion of the character is now saved.
+				mov #movables, -(sp)
+				mov r3,-(sp) ; saves old r3 in the stack
+				mov #10, r3
+	rightPlayer:cmpb @10(sp), @2(sp) ; Finds the correct location in the movables array.
+				beq loCont
+				add #2, 2(sp)
+				sob r3, rightPlayer
+	loCont:	inc 10(sp)
+				inc 2(sp)
+				cmpb @10(sp), @2(sp)
+				beq loopFin
+				dec 10(sp)
+				inc 2(sp)
+				sob r3, rightPlayer
+		loopFin:dec 10(sp)
+				inc 4(sp)
+				movb @4(sp),@2(sp)
+				dec 4(sp)
+				dec 2(sp)
+				movb @4(sp), @2(sp)
+				;mov (sp)+, (sp) ; moves the iterator to the place infront of the variables that needs to be deleted.
+				mov (sp)+, (sp) ; Frees the address to movables. and advances r3 saved in the stack.
+				mov #10, -(sp) ; Correct the id - r3 isn't the correct id yet.
+				sub r3, (sp)
+				mov (sp)+, r3 ; Now r3 will hold the correct id.
+				clr -(sp) ; Temporary
+				movb @4(sp), (sp)
+				movb (sp), r0
+				mul nCols, r0
+				inc 4(sp)
+				movb @4(sp), (sp)
+				add (sp), r1 ; Now r1 is the previous location of the character(which needs to be set).
+				clr (sp)+ ; Delete temporary
+				mov r5, -(sp) ; saves r5 before sob.
+				mov r3, r5 ; iterator for the asl
+				cmp r3, #0
+				bne aslNeeded
+				inc r3
+				jmp 10(pc) ; Skips the asl loop.
+	aslNeeded:	mov #1, r3
+	IDCorrected:asl r3 ; Makes the correct id for the mask.
+				sob r5, IDCorrected
+				mov (sp)+, r5 ; Retrieves the old r5
+				add #helper, r1 ; In order to turn on the corresponding bit.
+				bisb r3, (r1)
+				;Bringing back the character to its original location.
+				sub #helper, r1
+				add #board, r1 ; Now r1 will hold  the last location of the character in the board
+				cmpb 4(sp), #'A
+				bne isRobot
+				movb #'A, (r1)
+				br setCont
+	isRobot:	movb #'R, (r1)
+	setCont:	mov (sp)+, r3
 				tst (sp)+
 				tst (sp)+
-				mov #1, 2(sp)
-				halt
-				rts pc ; - ////// deleted for debugging.
-notWork:		tst (sp)+
-				tst (sp)+ ; Deletes the address of the paramaters stored in the stack.
-				mov #0, 2(sp)
-				rts pc ; - ////// deleted for debugging.
-				halt ; ////// won't be here in final version.
+				tst (sp)+
+				mov (sp)+, r0 ; Returning the original r0
+				mov (sp)+, r1 ; Returning the original r0
+				tst (sp)+ ; Freeing new coordinates
+	stop:		tst (sp)+ ; Freeing old coordinates
+				tst (sp)+ ; Freeing result of movePiece
+				rts pc
 
-moves: .byte 1,2,'D,3,4,'U
+board: .byte  0, 'B, 'R,  0
+	   .byte  0,  0, 'A, 'B
+	   .byte 'R,  0,  0,  0
+	   .byte  0, 'R,  0,  0
+	   .byte 'R,  0, 'B,  0
+moves: .byte 1,2,'D,3,1,'R,'@
+.even
 MaxLen: .word 2
-Finish: .byte 3,4
-fakeResult: .word 0
+Finish: .byte 3,3
+Result: .word 0 ; also should be deleted
+nCols: .word 4
+nRows: .word 5
+movables: .byte 1,2,0,2,2,0
+		  .byte 3,1,4,0,0,0
+		  .byte 0,0,0,0
+fakMove: .word 0
+helper: .blkw 128.
