@@ -1,0 +1,142 @@
+	; this needs some serious testing, and assumes that checkSol, getMoveable and movePiece all work
+	; 2(sp) should contain the address of the array of moves
+findShortest:	mov #4000, -(sp) ; FAKE RETURN ADDRESS. NEEDS TO BE DELETED IN FINAL VERSION.
+				mov r0, -(sp)	; save the content of r0
+				mov #-3, r0			; place 0 in r0, used for increasing the size of moves, equivelent to i
+				mov r1, -(sp)	; save the content of r1
+				mov 6(sp), r1		; places the address of moves in r1, which will be used for adding moves by "makeMoves"
+				mov r2, -(sp)	; save the content of r2
+				mov #0, r2			; places 0 in r2, if the function succeeds r2 will be the address of moves, otherwise it'll remain 0
+				mov r4, -(sp)	; save the content of r4
+				mov #0, r4			; places 0 in r4, but will it'll keep the length of the array of movables, equivelent to movables.length
+				; (sp) will be the original content of r4, 2(sp) will be to original content of r2,
+				; 4(sp) will be to original content of r1, 6(sp) will be to original content of r0,
+				; 12(sp) will be the address of moves
+				
+				mov #movables, -(sp) ; Parameter needed for getMovable.
+				jsr pc, getMovable	; places the array of movables in movables, and its length in r4
+				clr (sp)+
+				
+incLength:		add #3, r0			; if (i=0) or (i+=3)
+				mov r0, -(sp)		; variable length of moves, used by makeMoves
+									; makeMoves also uses r1, which is set earlier to be the address of moves.
+				jsr pc, makeMoves
+				tst (sp)+			; remove the length variable
+				cmp r2, #0			; check the return value of the function
+				bne endShortest		; if it succeded, meaning r2 isn't 0, go to endShortest
+				cmp r0, (#MaxLen)	; if the maximum length was reached, but the problem hasn't been solved, return 0
+				blt incLength
+				; the loop ends if there wasn't a solution to the problem
+				mov (sp)+, r4		; release the content of r4
+				mov (sp)+, r2		; release the content of r2
+				mov (sp)+, r1		; release the content of r1
+				mov (sp)+, r0		; release the content of r0
+				mov #0, 2(sp)		; place 0 in the return value <<<<<<<<<<<<<<<<<<check this
+				
+				; In endShortest the two local variables aren't released when called with one of the four "beq"s above?
+endShortest:
+				mov (sp)+, r4		; release the content of r4
+				mov (sp)+, r2		; release the content of r2
+				mov (sp)+, r1		; release the content of r1
+				mov (sp)+, r0		; release the content of r0
+				mov (sp), 2(sp)		; place the address of moves in the return value <<<<<<<<<<<<<<<<<<check this 
+				rts pc
+
+; #	recieves an existing array of moves and the length remaining to add, checks all possibilities and sees if at least one of them works
+; # param (sp) is the length of moves left to add
+; # r1 will be the address for the beginning of the array of moves
+; # r2 will contain the result of the function, the address of moves if it succeeded, otherwise it'll be 0
+makeMoves:		cmp (sp), #0
+				bne addMove
+				mov r4, -(sp) 		; Saves previous r4 in stack because r4 is needed for checkSol.
+				mov #moves, r4
+				movb #'@, (r1)
+				clr -(sp)			; variable for the result of checkSol, will be removed right after checkSol is used
+				jsr pc, checkSol
+				cmp (sp)+, 1		; (sp) should be 1 if the solution worked, otherwise it should be 0
+				beq solWorked
+				movb #0, (r1)
+				mov (sp)+, r4		; Retrieves previous r4.
+				mov #0, r2			; if the solution failed, r2 will be 0
+				rts pc
+				
+solWorked:		mov (sp)+, r4		; Retrieves previous r4.
+				mov #moves, r2		; if the solution worked, r2 will be the address of the working array of moves
+				rts pc
+			
+; r1 will be the address for the beginning of the array of moves			
+addMove:			mov #-2, -(sp)		; (sp) will be the iterator over movables
+				add #movables, (sp)	; (sp) is the now movables[i]
+oneObject:		add #2, (sp)		; i+=2
+				movb @(sp), (r1)	; moves[0] = movables[i]
+				inc (sp)			; (sp) is now movables[i+1]
+				inc r1				; (r1) is now moves[1] 
+				movb @(sp), (r1)	; moves[1] = movables[i+1]
+				inc r1				; (r1) is now moves[2]
+				mov (sp), -(sp)		; this and the following line perform length-=3 for the recursive usage of this function
+				sub #3, (sp)
+				
+				movb #'U, (r1)
+				inc r1				; (r1) is moves[3], ready for the next recursive calling of this function
+				jsr makeMoves
+				dec r1				; (r1) is back to being moves[2]
+				
+				movb #'D, (r1)
+				inc r1				; (r1) is moves[3], ready for the next recursive calling of this function
+				jsr makeMoves
+				dec r1				; (r1) is back to being moves[2]
+				
+				movb #'L, (r1)
+				inc r1				; (r1) is moves[3], ready for the next recursive calling of this function
+				jsr makeMoves
+				dec r1				; (r1) is back to being moves[2]
+				
+				movb #'R, (r1)
+				inc r1				; (r1) is moves[3], ready for the next recursive calling of this function
+				jsr makeMoves
+				dec r1				; (r1) is back to being moves[2]
+				
+				tst -(sp)			; release (sp), which was length-3
+				dec r1				; (r1) is back to being moves[1]
+				dec r1				; (r1) is back to being moves[0]
+				
+				cmp 4(sp), r4		; if(i<movables.length)		<<<<<<< check this and pretty much everything else here
+				blt oneObject
+				tst (sp)+
+				mov #0, r2
+
+				; psuedo-code in c, more or less, for how I think findShortest should be solved
+
+;getShortest(moves){
+;	for(int i=0; i<maxMoves; i+=3){
+;		createMoves(i, moves)
+;	}
+;}
+
+;createMoves(length, moves){
+;	if(length == 0)
+;		if(checkSol(moves) == 1)
+;			return moves
+;		return 0
+;	for(int i=0; i< movables.length; i+=2){
+;		moves[0] = movables[i]
+;		moves[1] = movables[i+1]
+;		moves[2] = 'U
+;		result = createMoves(length-3, moves+3)
+;		if(result != 0)
+;			return result
+;		moves[2] = 'D
+;		result = createMoves(length-3, moves+3)
+;		if(result != 0)
+;			return result
+;		moves[2] = 'L
+;		result = createMoves(length-3, moves+3)
+;		if(result != 0)
+;			return result	
+;		moves[2] = 'R
+;		result = createMoves(length-3, moves+3)
+;		if(result != 0)
+;			return result
+;	}
+;	return 0
+;}
