@@ -633,7 +633,6 @@ board: 	.byte 0,'B, 0, 0, 0
 helper: 	.blkw 128
 
 nRows: .byte 5		; number of rows
-.even
 nCols: .byte 5		; number of columns
 MaxLen: .word 15		; the maximum amount of moves in a legal solution
 Finish: .byte 2, 1	; the finishing square
